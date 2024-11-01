@@ -46,6 +46,7 @@ public class Computer : IComputer
     private bool _psuEnabled;
     private SMBios _smbios;
     private bool _storageEnabled;
+    private ushort _smbusAddress;
 
     /// <summary>
     /// Creates a new <see cref="IComputer" /> instance with basic initial <see cref="Settings" />.
@@ -194,7 +195,7 @@ public class Computer : IComputer
             if (_open && value != _memoryEnabled)
             {
                 if (value)
-                    Add(new MemoryGroup(_settings));
+                    Add(new MemoryGroup(_smbusAddress, _smbios, _settings));
                 else
                     RemoveType<MemoryGroup>();
             }
@@ -488,7 +489,7 @@ public class Computer : IComputer
             return;
 
         _smbios = new SMBios();
-
+        _smbusAddress = SMBusDevice.DetectSmBusAddress(_smbios);
         Ring0.Open();
         Mutexes.Open();
         OpCode.Open();
@@ -507,7 +508,7 @@ public class Computer : IComputer
             Add(new CpuGroup(_settings));
 
         if (_memoryEnabled)
-            Add(new MemoryGroup(_settings));
+            Add(new MemoryGroup(_smbusAddress, _smbios, _settings));
 
         if (_gpuEnabled)
         {
