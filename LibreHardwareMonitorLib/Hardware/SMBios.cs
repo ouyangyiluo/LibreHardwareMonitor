@@ -390,7 +390,8 @@ public enum ProcessorSocket
     Lga2066,
     Bga1510,
     Bga1528,
-    Lga4189
+    Lga4189,
+    AM5 = 0x49
 }
 
 /// <summary>
@@ -1086,11 +1087,27 @@ public class MemoryDevice : InformationBase
         PartNumber = GetString(0x1A).Trim();
         Speed = GetWord(0x15);
         ConfiguredSpeed = GetWord(0x20);
+        //ushort minimumVoltage = GetWord(0x22);
+        //ushort maximumVoltage = GetWord(0x24);
         ConfiguredVoltage = GetWord(0x26);
         Size = GetWord(0x0C);
         if (Size == 0x7FFF)
             Size = GetDword(0x1C);
         Type = (MemoryType)GetByte(0x12);
+
+        
+        ushort moduleManufacturerID = GetWord(0x2C);
+        ushort moduleProductID = GetWord(0x2E);
+        ushort memorySubsystemControllerManufacturerID = GetWord(0x30);
+        ushort memorySubsystemControllerProductID = GetWord(0x32);
+        ushort pmic0ManufacturerID = GetWord(0x5C);
+        ushort pmic0RevisionNumber = GetWord(0x5E);
+        ushort rcdManufacturerID = GetWord(0x60);
+        ushort rcdRevisionNumber = GetWord(0x62);
+
+        //string AssetTag = GetString(0x19);
+        //ushort Attributes = GetByte(0x1B);
+
     }
 
     /// <summary>

@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -46,6 +47,7 @@ public class Computer : IComputer
     private bool _psuEnabled;
     private SMBios _smbios;
     private bool _storageEnabled;
+    private ushort _smbusAddress;
 
     /// <summary>
     /// Creates a new <see cref="IComputer" /> instance with basic initial <see cref="Settings" />.
@@ -194,7 +196,7 @@ public class Computer : IComputer
             if (_open && value != _memoryEnabled)
             {
                 if (value)
-                    Add(new MemoryGroup(_settings));
+                    Add(new MemoryGroup(_smbusAddress, _smbios, _settings));
                 else
                     RemoveType<MemoryGroup>();
             }
@@ -478,6 +480,133 @@ public class Computer : IComputer
             Remove(group);
     }
 
+    //public enum BaseClassType : byte
+    //{
+    //    Obsolete = 0x00,
+    //    Storage = 0x01,
+    //    Network = 0x02,
+    //    Display = 0x03,
+    //    Multimedia = 0x04,
+    //    Memory = 0x05,
+    //    Bridge = 0x06,
+    //    Communication = 0x07,
+    //    System = 0x08,
+    //    Input = 0x09,
+    //    Docking = 0x0A,
+    //    Processor = 0x0B,
+    //    Serial = 0x0C,
+    //    Wireless = 0x0D,
+    //    Intelligent = 0x0E,
+    //    Satellite = 0x0F,
+    //    Encryption = 0x10,
+    //    Processing = 0x11,
+    //    Accelerator = 0x12,
+    //    Instrumentation = 0x13,
+    //    Undefined = 0xFF
+    //}
+
+    ///// <summary>
+    ///// PCI Sub Class codes
+    ///// </summary>
+    //public enum SubClassType : byte
+    //{
+    //    Isa = 0x01,
+    //    Smbus = 0x05,
+    //}
+
+    //private static byte _maxPciBusIndex = 255;
+    //private static int MaxPciCount => (_maxPciBusIndex + 1) * 256 /*(MAX_PCI_DEVICE_INDEX + 1) * (MAX_PCI_FUNCTION_INDEX + 1)*/;
+
+    //public static void FindDeviceByClass(BaseClassType baseClass, SubClassType subClass, byte programIf, int maxCount)
+    //{
+
+    //    //if (maxCount > MaxPciCount || maxCount == 0)
+    //    //if (IsOutside(maxCount, 1, MaxPciCount))
+    //    //{
+    //    //    throw new ArgumentOutOfRangeException(nameof(maxCount));
+    //    //}
+
+    //    Queue<PciConfig> result = new Queue<PciConfig>();
+
+    //    bool stopFlag = false;
+
+    //    if (LockPciMutex())
+    //    {
+
+    //        PciConfig pciConfig = new PciConfig();
+
+    //        // Bus loop
+    //        for (short bus = 0; bus <= _maxPciBusIndex && !stopFlag; bus++)
+    //        {
+    //            // Device loop
+    //            for (byte dev = 0; dev <= MaxPciDeviceIndex && !stopFlag; dev++)
+    //            {
+
+    //                pciConfig.SetBus((byte)bus).SetDevice(dev).SetFunction(0);
+
+    //                DeviceId devId = pciConfig.DeviceId;
+
+    //                if (devId == ushort.MinValue ||
+    //                    devId == DeviceId.Invalid)
+    //                {
+    //                    continue;
+    //                }
+
+    //                for (byte func = 0; func <= MaxPciFunctionIndex; func++)
+    //                {
+
+    //                    pciConfig.SetFunction(func);
+
+    //                    if ((Kernel.ReadPciConfig<uint>((byte)bus, dev, func, 0x08) & 0xFFFFFF00) !=
+    //                        (uint)(((byte)baseClass << 24) |
+    //                               ((byte)subClass << 16) |
+    //                               ((byte)programIf << 8)))
+    //                    {
+    //                        continue;
+    //                    }
+
+    //                    result.Enqueue(new PciConfig(pciConfig));
+
+    //                    if (result.Count != maxCount)
+    //                    {
+    //                        continue;
+    //                    }
+
+    //                    stopFlag = true;
+    //                    break;
+    //                }
+    //            }
+    //        }
+
+    //        UnlockPciMutex();
+    //    }
+
+    //    return result.ToArray();
+    //}
+
+
+    public UInt32 MakePciConfigAddress(UInt32 functionNumber, UInt32 deviceNumber, UInt32 busNumber)
+    {
+        UInt32 pciConfigAddress = ((functionNumber & 7) | ((deviceNumber & 0x1F) << 3) | (busNumber & 0xFF) << 8);
+        return pciConfigAddress;
+    }
+
+  
+    const uint PCIConfigurationOffset_VendorID = 0x00;
+    const uint PCIConfigurationOffset_DeviceID = 0x02;
+    const uint PCIConfigurationOffset_RevisionID_and_ClassCode = 0x08;
+
+    const ushort IOMappedControlRegisters_PM_Index = 0xCD6;
+    const ushort IOMappedControlRegisters_PM_Data = 0xCD7;
+
+
+    public byte PMRead(byte offsetAddress)
+    {
+        Ring0.WriteIoPort(IOMappedControlRegisters_PM_Index, (offsetAddress));
+        return Ring0.ReadIoPort(IOMappedControlRegisters_PM_Data);
+    }
+
+
     /// <summary>
     /// If hasn't been opened before, opens <see cref="SMBios" />, <see cref="Ring0" />, <see cref="OpCode" /> and triggers the private <see cref="AddGroups" /> method depending on which categories are
     /// enabled.
@@ -488,11 +617,141 @@ public class Computer : IComputer
             return;
 
         _smbios = new SMBios();
-
+        _smbusAddress = SMBusDevice.DetectSmBusAddress(_smbios);
         Ring0.Open();
         Mutexes.Open();
         OpCode.Open();
+        //{
+            //byte[] buffer = new byte[4];
+            //bool isOk = Ring0.ReadMemory(0xFED10000 + 0x24, ref buffer);
 
+            //dev-test
+            if (Mutexes.WaitSmBus(1222))
+            {
+            //const byte AcpiMmioEn = 0x24;
+
+            //Ring0.WriteIoPort(IOMappedControlRegisters_PM_Index, (AcpiMmioEn));
+            //Ring0.ReadIoPort(IOMappedControlRegisters_PM_Data);
+            //uint uintValue1 = 0;
+            //uint bytetValue1 = PMRead(0x00);
+            //bool isOk = Ring0.ReadPciConfig(MakePciConfigAddress(0, 20, 0), 0x24, out uintValue1);
+            //isOk = Ring0.WritePciConfig(MakePciConfigAddress(0, 20, 0), 0x24, 1);
+            //isOk = Ring0.ReadPciConfig(MakePciConfigAddress(0, 20, 0), 0x24, out uintValue1);
+            //byte value1 = PMRead(0x00);
+
+                //byte value1 = PMRead(AcpiMmioEn);
+                //byte value2 = PMRead(AcpiMmioEn + 1);
+                //byte value3 = PMRead(AcpiMmioEn + 2);
+                //byte value4 = PMRead(AcpiMmioEn + 3);
+                ////Ring0.ReadIoPort();
+
+                ////未理解，待查询
+                //const byte smb_en = 0x00; // AMD && (Hudson2 && revision >= 0x41 || FCH && revision >= 0x49)
+
+                //Ring0.WriteIoPort(IOMappedControlRegisters_PM_Index, (byte)(smb_en + 1));
+                //byte smba_en_high = Ring0.ReadIoPort(IOMappedControlRegisters_PM_Data);
+
+                //Ring0.WriteIoPort(IOMappedControlRegisters_PM_Index, smb_en);
+                //byte smba_en_low = Ring0.ReadIoPort(IOMappedControlRegisters_PM_Data);
+
+
+                //Debug.WriteLine($"smba_en_low 0x{smba_en_low.ToString("X")}");
+                //Debug.WriteLine($"smba_en_high 0x{smba_en_high.ToString("X")}");
+                //if (smba_en_low == 0xFF && smba_en_high == 0xFF)
+                //{
+                //    uint value = 0;
+                //    const uint AcpiMMioAddr = 0xFED80000;
+                //    const uint pmioOffset = 0x300u;
+                //    byte[] buffer = new byte[4];
+
+                //    if (Ring0.ReadMemory(AcpiMMioAddr + pmioOffset, ref buffer))
+                //    {
+                //        uint smbusbase = (ushort)(((value >> 8) & 0xFF) << 8);
+                //        Debug.WriteLine($"smbusbase 0x{smbusbase.ToString("X")}");
+
+                //    }
+
+
+                //}
+
+
+                Mutexes.ReleaseSmBus();
+            }
+
+        if (Mutexes.WaitPciBus(3333))
+        {
+            uint smbdev = 0, smbfun = 0;
+
+            for (smbdev = 0; smbdev < 32; smbdev++)
+            {
+                for (smbfun = 0; smbfun < 8; smbfun++)
+                {
+                    uint value = 0;
+                    if (Ring0.ReadPciConfig(MakePciConfigAddress(smbfun, smbdev, 0), PCIConfigurationOffset_VendorID, out value))
+                    {
+                        uint vendorID = value & 0xFFFF;
+                        uint deviceID = (value >> 16) & 0xFFFF;
+                        //Debug.WriteLine($"value {value}");
+                        if ((vendorID & 0xFFFF) != 0xFFFF && (deviceID & 0xFFFF) != 0xFFFF)
+                        {
+                            Debug.WriteLine($"smbdev 0x{smbdev.ToString("X")}  smbfun 0x{smbfun.ToString("X")}");
+                            const uint vendorId_AMD = 0x1022;
+                            const uint deviceID_ZEN = 0x790B; // AM4/ZEN
+                            if (vendorID == vendorId_AMD && deviceID == deviceID_ZEN)
+                            {
+                                Debug.WriteLine($"vendorID 0x{vendorID.ToString("X")}  deviceID 0x{deviceID.ToString("X")}");
+                                if (Ring0.ReadPciConfig(MakePciConfigAddress(smbfun, smbdev, 0), PCIConfigurationOffset_RevisionID_and_ClassCode, out value))
+                                {
+                                    uint revisionID = value & 0xFF;
+                                    uint classCode = (value >> 8) & 0x0FFFFFFF;
+                                    Debug.WriteLine($"revisionID 0x{revisionID.ToString("X")}  classCode 0x{classCode.ToString("X")}");
+                                    if (classCode == 0x0C0500) // 0C0500h denotes a SMBUS controller.
+                                    {
+                                        bool isOk = Ring0.ReadPciConfig(MakePciConfigAddress(smbfun, smbdev, 0), 0x24, out value);
+
+                                        uint BaseClass = (classCode >> 16) & 0xFF;
+                                        uint subClass = (classCode >> 8) & 0xFF;
+                                        uint programmingInterface = classCode & 0xFF;
+                                        Debug.WriteLine($"BaseClass 0x{BaseClass.ToString("X")}  subClass 0x{subClass.ToString("X")}  programmingInterface 0x{programmingInterface.ToString("X")}");
+                                    }
+
+
+
+
+                                }
+
+                            }
+                        }
+
+
+
+                        //if ((vid >> 16 & 0xFFFF) != 0xFFFF)
+                        //{
+                        //    if (Ring0.ReadPciConfig(smbdev, 2, out did))
+                        //    {
+                        //        if ((did & 0xFFFF) != 0xFFFF)
+                        //        {
+                        //            Debug.WriteLine($"vid {vid} did {vid}");
+                        //        }
+                        //    }
+
+                        //    //did = pci_config_read16(0, smbdev, smbfun, 2);
+                        //    //if (did != 0xFFFF)
+                        //    //{
+                        //    //    Debug.WriteLine($"");
+                        //    //    //if (find_smb_controller(vid, did))
+                        //    //    //{
+                        //    //    //    return true;
+                        //    //    //}
+                        //    //}
+                        //}
+                    }
+
+                }
+            }
+            Mutexes.ReleasePciBus();
+            //SpdReaderWriterCore.PciConfig.FindDeviceByClass(SpdReaderWriterCore.PciConfig.BaseClassType.Serial, SpdReaderWriterCore.PciConfig.SubClassType.Smbus, programIf: 0,);
+        }
         AddGroups();
 
         _open = true;
@@ -507,7 +766,7 @@ public class Computer : IComputer
             Add(new CpuGroup(_settings));
 
         if (_memoryEnabled)
-            Add(new MemoryGroup(_settings));
+            Add(new MemoryGroup(_smbusAddress, _smbios, _settings));
 
         if (_gpuEnabled)
         {
