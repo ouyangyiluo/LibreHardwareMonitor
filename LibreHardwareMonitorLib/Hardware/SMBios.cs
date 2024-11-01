@@ -390,7 +390,8 @@ public enum ProcessorSocket
     Lga2066,
     Bga1510,
     Bga1528,
-    Lga4189
+    Lga4189,
+    AM5 = 0x49
 }
 
 /// <summary>

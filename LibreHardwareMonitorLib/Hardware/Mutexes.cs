@@ -8,6 +8,8 @@ internal static class Mutexes
     private static Mutex _ecMutex;
     private static Mutex _isaBusMutex;
     private static Mutex _pciBusMutex;
+    private static Mutex _smBusMutex;
+    private static Mutex _smAPICMutex;
     private static Mutex _razerMutex;
 
     /// <summary>
@@ -17,6 +19,8 @@ internal static class Mutexes
     {
         _isaBusMutex = CreateOrOpenExistingMutex("Global\\Access_ISABUS.HTP.Method");
         _pciBusMutex = CreateOrOpenExistingMutex("Global\\Access_PCI");
+        _smBusMutex = CreateOrOpenExistingMutex("Global\\Access_SMBUS.HTP.Method");
+        _smAPICMutex = CreateOrOpenExistingMutex("Global\\Access_APIC_Clk_Measure");
         _ecMutex = CreateOrOpenExistingMutex("Global\\Access_EC");
         _razerMutex = CreateOrOpenExistingMutex("Global\\RazerReadWriteGuardMutex");
 
@@ -49,6 +53,8 @@ internal static class Mutexes
     {
         _isaBusMutex?.Close();
         _pciBusMutex?.Close();
+        _smBusMutex?.Close();
+        _smAPICMutex?.Close();
         _ecMutex?.Close();
         _razerMutex?.Close();
     }
@@ -71,6 +77,26 @@ internal static class Mutexes
     public static void ReleasePciBus()
     {
         _pciBusMutex?.ReleaseMutex();
+    }
+
+    public static bool WaitSmBus(int millisecondsTimeout)
+    {
+        return WaitMutex(_smBusMutex, millisecondsTimeout);
+    }
+
+    public static void ReleaseSmBus()
+    {
+        _smBusMutex?.ReleaseMutex();
+    }
+
+    public static bool WaitAPIC(int millisecondsTimeout)
+    {
+        return WaitMutex(_smAPICMutex, millisecondsTimeout);
+    }
+
+    public static void ReleaseAPIC()
+    {
+        _smAPICMutex?.ReleaseMutex();
     }
 
     public static bool WaitEc(int millisecondsTimeout)
